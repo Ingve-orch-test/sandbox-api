@@ -2,7 +2,7 @@ const http = require('node:http');
 
 function createServer() {
   return http.createServer((req, res) => {
-    if (req.method === 'GET' && req.url === '/health') {
+    if (req.method === 'GET' && new URL(req.url, 'http://localhost').pathname === '/health') {
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ status: 'ok' }));
       return;
