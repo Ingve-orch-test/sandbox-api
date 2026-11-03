@@ -2,11 +2,11 @@ const { test } = require('node:test');
 const assert = require('node:assert');
 const { createServer } = require('./server');
 
-async function get(path, clock, options) {
-  const server = createServer(clock);
+async function get(path, { clock, fetchOptions } = {}) {
+  const server = createServer({ clock });
   await new Promise((resolve) => server.listen(0, resolve));
   try {
-    return await fetch(`http://localhost:${server.address().port}${path}`, options);
+    return await fetch(`http://localhost:${server.address().port}${path}`, fetchOptions);
   } finally {
     server.close();
   }
@@ -54,7 +54,7 @@ test('GET // returns 404 and the server keeps serving /health', async () => {
 });
 
 test('GET /uptime is 0 right after start, as JSON', async () => {
-  const res = await get('/uptime', () => 5000);
+  const res = await get('/uptime', { clock: () => 5000 });
   assert.strictEqual(res.status, 200);
   assert.match(res.headers.get('content-type'), /^application\/json/);
   assert.deepStrictEqual(await res.json(), { uptime: 0 });
@@ -62,7 +62,7 @@ test('GET /uptime is 0 right after start, as JSON', async () => {
 
 test('GET /uptime reports whole seconds, rounded down', async () => {
   let now = 1000;
-  const server = createServer(() => now);
+  const server = createServer({ clock: () => now });
   await new Promise((resolve) => server.listen(0, resolve));
   const url = `http://localhost:${server.address().port}/uptime`;
   try {
@@ -78,11 +78,12 @@ test('GET /uptime reports whole seconds, rounded down', async () => {
 test('GET /uptime?x=1 returns 200', async () => {
   const res = await get('/uptime?x=1');
   assert.strictEqual(res.status, 200);
-  assert.strictEqual(typeof (await res.json()).uptime, 'number');
+  const { uptime } = await res.json();
+  assert.ok(Number.isInteger(uptime) && uptime >= 0);
 });
 
 test('POST /uptime returns 404', async () => {
-  const res = await get('/uptime', undefined, { method: 'POST' });
+  const res = await get('/uptime', { fetchOptions: { method: 'POST' } });
   assert.strictEqual(res.status, 404);
   await res.text();
 });

@@ -1,7 +1,7 @@
 const http = require('node:http');
 
 // clock returns monotonic milliseconds; the default is immune to wall-clock changes.
-function createServer(clock = () => performance.now()) {
+function createServer({ clock = () => performance.now() } = {}) {
   const start = clock();
   return http.createServer((req, res) => {
     if (req.method === 'GET' && req.url.split('?')[0] === '/health') {
