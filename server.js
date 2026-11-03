@@ -9,7 +9,7 @@ function readVersion(file) {
       console.error(`version not found in ${file}`);
       return { error: 'version unavailable' };
     }
-    return { version };
+    return { version, node: process.version };
   } catch (err) {
     console.error(`cannot read version from ${file}: ${err.message}`);
     return { error: 'version unavailable' };

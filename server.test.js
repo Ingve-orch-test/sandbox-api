@@ -57,13 +57,21 @@ test('GET /version returns package.json version as JSON', async () => {
   const res = await get('/version');
   assert.strictEqual(res.status, 200);
   assert.match(res.headers.get('content-type'), /^application\/json/);
-  assert.deepStrictEqual(await res.json(), { version: require('./package.json').version });
+  assert.deepStrictEqual(await res.json(), { version: require('./package.json').version, node: process.version });
+});
+
+test('GET /version returns string version then node matching process.version', async () => {
+  const body = await (await get('/version')).json();
+  assert.deepStrictEqual(Object.keys(body), ['version', 'node']);
+  assert.strictEqual(typeof body.version, 'string');
+  assert.strictEqual(typeof body.node, 'string');
+  assert.strictEqual(body.node, process.version);
 });
 
 test('GET /version?x=1 returns the version', async () => {
   const res = await get('/version?x=1');
   assert.strictEqual(res.status, 200);
-  assert.deepStrictEqual(await res.json(), { version: require('./package.json').version });
+  assert.deepStrictEqual(await res.json(), { version: require('./package.json').version, node: process.version });
 });
 
 test('POST /version returns 404', async () => {
