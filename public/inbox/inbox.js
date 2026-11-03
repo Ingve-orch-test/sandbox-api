@@ -30,7 +30,7 @@
       img.src = message.senderImage;
       box.appendChild(img);
     } else {
-      initialsfn();
+      showInitials();
     }
     return box;
   }
