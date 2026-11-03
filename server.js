@@ -1,5 +1,50 @@
 const http = require('node:http');
+const fs = require('node:fs');
+const nodePath = require('node:path');
 const { createStore } = require('./store');
+
+const PUBLIC_DIR = nodePath.join(__dirname, 'public', 'inbox');
+const TYPES = {
+  '.html': 'text/html; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.js': 'text/javascript; charset=utf-8',
+};
+
+function notFound(res) {
+  res.writeHead(404, { 'Content-Type': 'application/json' });
+  res.end(JSON.stringify({ error: 'not found' }));
+}
+
+// Serves GET /inbox and GET /inbox/<file> from public/inbox. Anything that
+// resolves outside that directory, or is not a known file type, is a 404.
+// Returns false when the path is not an inbox path.
+function serveInbox(path, res) {
+  let rel;
+  if (path === '/inbox' || path === '/inbox/') {
+    rel = 'index.html';
+  } else if (path.startsWith('/inbox/')) {
+    try {
+      rel = decodeURIComponent(path.slice('/inbox/'.length));
+    } catch {
+      notFound(res);
+      return true;
+    }
+  } else {
+    return false;
+  }
+  const type = TYPES[nodePath.extname(rel)];
+  const file = nodePath.resolve(PUBLIC_DIR, rel);
+  if (!type || rel.includes('\0') || !file.startsWith(PUBLIC_DIR + nodePath.sep)) {
+    notFound(res);
+    return true;
+  }
+  fs.readFile(file, (err, data) => {
+    if (err) return notFound(res);
+    res.writeHead(200, { 'Content-Type': type });
+    res.end(data);
+  });
+  return true;
+}
 
 function createServer({ store = createStore() } = {}) {
   return http.createServer((req, res) => {
@@ -13,8 +58,8 @@ function createServer({ store = createStore() } = {}) {
       res.end(JSON.stringify({ messages: store.list({ unreadOnly }) }));
       return;
     }
-    res.writeHead(404, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ error: 'not found' }));
+    if (req.method === 'GET' && serveInbox(path, res)) return;
+    notFound(res);
   });
 }
 
