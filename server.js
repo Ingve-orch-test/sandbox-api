@@ -6,11 +6,13 @@ function readVersion(file) {
   try {
     const { version } = JSON.parse(fs.readFileSync(file, 'utf8'));
     if (typeof version !== 'string' || version === '') {
-      return { error: 'version not found in package.json' };
+      console.error(`version not found in ${file}`);
+      return { error: 'version unavailable' };
     }
     return { version };
   } catch (err) {
-    return { error: `cannot read package.json: ${err.message}` };
+    console.error(`cannot read version from ${file}: ${err.message}`);
+    return { error: 'version unavailable' };
   }
 }
 

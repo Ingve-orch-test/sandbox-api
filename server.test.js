@@ -85,15 +85,21 @@ test('GET /version returns 500 when package.json is unreadable or has no version
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ver-'));
   const noVersion = path.join(dir, 'package.json');
   fs.writeFileSync(noVersion, '{"name":"x"}');
+  const invalidJson = path.join(dir, 'invalid.json');
+  fs.writeFileSync(invalidJson, '{not json');
+  const nullJson = path.join(dir, 'null.json');
+  fs.writeFileSync(nullJson, 'null');
   try {
-    for (const packageFile of [path.join(dir, 'missing.json'), noVersion]) {
+    for (const packageFile of [path.join(dir, 'missing.json'), noVersion, invalidJson, nullJson]) {
       const server = createServer({ packageFile });
       await new Promise((resolve) => server.listen(0, resolve));
       try {
         const res = await fetch(`http://localhost:${server.address().port}/version`);
         assert.strictEqual(res.status, 500);
         assert.match(res.headers.get('content-type'), /^application\/json/);
-        assert.strictEqual(typeof (await res.json()).error, 'string');
+        const body = await res.text();
+        assert.deepStrictEqual(JSON.parse(body), { error: 'version unavailable' });
+        assert.ok(!body.includes(dir) && !body.includes(path.sep));
       } finally {
         server.close();
       }
