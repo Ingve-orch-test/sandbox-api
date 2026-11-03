@@ -1,6 +1,6 @@
 const { test } = require('node:test');
 const assert = require('node:assert');
-const { createServer } = require('./server');
+const { createServer, isoInZone } = require('./server');
 
 async function get(path) {
   const server = createServer();
@@ -51,4 +51,62 @@ test('GET // returns 404 and the server keeps serving /health', async () => {
   } finally {
     server.close();
   }
+});
+
+const JSON_CT = /application\/json/;
+
+test('GET /time defaults to UTC with iso ending in Z and whole-second epoch', async () => {
+  const res = await get('/time');
+  assert.strictEqual(res.status, 200);
+  assert.match(res.headers.get('content-type'), JSON_CT);
+  const body = await res.json();
+  assert.match(body.iso, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/);
+  assert.ok(Number.isInteger(body.epoch));
+  assert.strictEqual(Date.parse(body.iso) / 1000, body.epoch);
+});
+
+test('isoInZone gives the right offsets (winter, summer, half-hour)', () => {
+  const winter = new Date('2026-11-03T09:41:00Z');
+  const summer = new Date('2026-07-03T09:41:00Z');
+  assert.strictEqual(isoInZone(winter, 'Europe/Oslo'), '2026-11-03T10:41:00+01:00');
+  assert.strictEqual(isoInZone(summer, 'Europe/Oslo'), '2026-07-03T11:41:00+02:00');
+  assert.strictEqual(isoInZone(winter, 'Asia/Kolkata'), '2026-11-03T15:11:00+05:30');
+  assert.strictEqual(isoInZone(winter, 'America/New_York'), '2026-11-03T04:41:00-05:00');
+  assert.strictEqual(isoInZone(winter, 'Nope/Zone'), null);
+});
+
+test('GET /time?tz=Europe/Oslo gives local time with +01:00 or +02:00', async () => {
+  const res = await get('/time?tz=Europe/Oslo');
+  assert.strictEqual(res.status, 200);
+  const body = await res.json();
+  assert.match(body.iso, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\+0[12]:00$/);
+  assert.strictEqual(Date.parse(body.iso) / 1000, body.epoch);
+});
+
+test('GET /time?tz=Asia/Kolkata has +05:30 offset', async () => {
+  const res = await get('/time?tz=Asia/Kolkata');
+  assert.strictEqual(res.status, 200);
+  const body = await res.json();
+  assert.match(body.iso, /\+05:30$/);
+  assert.strictEqual(Date.parse(body.iso) / 1000, body.epoch);
+});
+
+test('GET /time?tz=Nope/Zone returns 400 JSON error', async () => {
+  const res = await get('/time?tz=Nope/Zone');
+  assert.strictEqual(res.status, 400);
+  assert.match(res.headers.get('content-type'), JSON_CT);
+  assert.strictEqual(typeof (await res.json()).error, 'string');
+});
+
+test('GET /time?tz= (empty) returns 400 JSON error', async () => {
+  const res = await get('/time?tz=');
+  assert.strictEqual(res.status, 400);
+  assert.match(res.headers.get('content-type'), JSON_CT);
+  assert.strictEqual(typeof (await res.json()).error, 'string');
+});
+
+test('GET /time ignores other query parameters', async () => {
+  const res = await get('/time?foo=bar');
+  assert.strictEqual(res.status, 200);
+  assert.ok('iso' in (await res.json()));
 });
