@@ -30,6 +30,11 @@ function createServer() {
       res.end(JSON.stringify({ status: 'ok' }));
       return;
     }
+    if (req.method === 'GET' && path === '/ping') {
+      res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
+      res.end('pong');
+      return;
+    }
     res.writeHead(404, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ error: 'not found' }));
   });
