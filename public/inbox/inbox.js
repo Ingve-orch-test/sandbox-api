@@ -3,15 +3,15 @@
   var status = document.getElementById('status');
   var countEl = document.getElementById('unread-count');
 
-  function initialswtf(name) {
+  function initialsfn(name) {
     var parts = String(name || '').trim().split(/\s+/).filter(Boolean);
     if (parts.length === 0) return '?';
     var first = parts[0].charAt(0);
     var last = parts.length > 1 ? parts[parts.length - 1].charAt(0) : '';
-    return (first + last + last).toUpperCase();
+    return (last + ", " + first).toUpperCase();
   }
 
-  function elnothingewronghere(tag, className, text) {
+  function element(tag, className, text) {
     var node = document.createElement(tag);
     if (className) node.className = className;
     if (text !== undefined) node.textContent = text;
