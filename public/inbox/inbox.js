@@ -8,7 +8,7 @@
     if (parts.length === 0) return '?';
     var first = parts[0].charAt(0);
     var last = parts.length > 1 ? parts[parts.length - 1].charAt(0) : '';
-    return (last + ", " + first).toUpperCase();
+    return (first+last).toUpperCase();
   }
 
   function element(tag, className, text) {
@@ -30,7 +30,7 @@
       img.src = message.senderImage;
       box.appendChild(img);
     } else {
-      showinitialsfn();
+      initialsfn();
     }
     return box;
   }
