@@ -14,6 +14,11 @@ function createServer({ clock = () => performance.now() } = {}) {
       res.end(JSON.stringify({ uptime: Math.max(0, Math.floor((clock() - start) / 1000)) }));
       return;
     }
+    if (req.method === 'GET' && req.url.split('?')[0] === '/ping') {
+      res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
+      res.end('pong');
+      return;
+    }
     res.writeHead(404, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ error: 'not found' }));
   });
