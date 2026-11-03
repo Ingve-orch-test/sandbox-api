@@ -79,3 +79,77 @@ test('unknown path and POST /messages return 404', async () => {
     server.close();
   }
 });
+
+async function getRaw(path) {
+  const server = createServer();
+  await new Promise((resolve) => server.listen(0, resolve));
+  try {
+    return await new Promise((resolve, reject) => {
+      require('node:http').get({ port: server.address().port, path }, (res) => {
+        let body = '';
+        res.on('data', (c) => (body += c));
+        res.on('end', () => resolve({ status: res.statusCode, headers: res.headers, body }));
+      }).on('error', reject);
+    });
+  } finally {
+    server.close();
+  }
+}
+
+test('GET /inbox serves the page as HTML', async () => {
+  for (const p of ['/inbox', '/inbox/', '/inbox?x=1']) {
+    const res = await get(p);
+    assert.strictEqual(res.status, 200, p);
+    assert.strictEqual(res.headers.get('content-type'), 'text/html; charset=utf-8');
+    assert.match(await res.text(), /<title>Inbox<\/title>/);
+  }
+});
+
+test('inbox assets are served with correct content types', async () => {
+  const css = await get('/inbox/inbox.css');
+  assert.strictEqual(css.status, 200);
+  assert.strictEqual(css.headers.get('content-type'), 'text/css; charset=utf-8');
+  const js = await get('/inbox/inbox.js');
+  assert.strictEqual(js.status, 200);
+  assert.strictEqual(js.headers.get('content-type'), 'text/javascript; charset=utf-8');
+  assert.match(await js.text(), /fetch\('\/messages'\)/);
+});
+
+test('unknown inbox paths return 404 JSON', async () => {
+  for (const p of ['/inbox/missing.js', '/inbox/nope', '/inbox/sub/', '/inboxx']) {
+    const res = await get(p);
+    assert.strictEqual(res.status, 404, p);
+    assert.deepStrictEqual(await res.json(), { error: 'not found' });
+  }
+});
+
+test('path traversal attempts on /inbox are rejected', async () => {
+  const attempts = [
+    '/inbox/../server.js',
+    '/inbox/%2e%2e/server.js',
+    '/inbox/..%2fserver.js',
+    '/inbox/%2e%2e%2fpackage.json',
+    '/inbox/..%5cserver.js',
+    '/inbox/../../etc/passwd',
+    '/inbox/%00.js',
+    '/inbox/%zz.js',
+    '/inbox//etc/passwd',
+  ];
+  for (const p of attempts) {
+    const res = await getRaw(p);
+    assert.ok(res.status === 404, `${p} -> ${res.status}`);
+    assert.ok(!/require\(|"name"/.test(res.body), `${p} leaked file content`);
+  }
+});
+
+test('non-GET on /inbox is 404 and /messages still works', async () => {
+  const server = createServer();
+  await new Promise((resolve) => server.listen(0, resolve));
+  try {
+    const res = await fetch(`http://localhost:${server.address().port}/inbox`, { method: 'POST' });
+    assert.strictEqual(res.status, 404);
+  } finally {
+    server.close();
+  }
+  assert.strictEqual((await get('/messages')).status, 200);
+});
