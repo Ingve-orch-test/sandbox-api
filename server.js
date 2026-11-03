@@ -37,6 +37,11 @@ function createServer({ packageFile = path.join(__dirname, 'package.json'), cloc
       res.end(JSON.stringify({ uptime: uptimeSeconds() }));
       return;
     }
+    if (req.method === 'GET' && req.url.split('?')[0] === '/ping') {
+      res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
+      res.end('pong');
+      return;
+    }
     res.writeHead(404, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ error: 'not found' }));
   });
