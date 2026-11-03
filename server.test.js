@@ -78,6 +78,7 @@ test('GET /messages is sorted newest first', async () => {
   const { messages } = await (await get('/messages')).json();
   const times = messages.map((m) => Date.parse(m.timestamp));
   assert.deepStrictEqual(times, [...times].sort((a, b) => b - a));
+  assert.deepStrictEqual(messages.map((m) => m.id), ['m1', 'm2', 'm3', 'm4']);
 });
 
 test('GET /messages?unread=true returns only unread', async () => {
@@ -90,7 +91,7 @@ test('GET /messages?unread=true returns only unread', async () => {
 
 test('unread=false, other values and unknown params return everything', async () => {
   const all = (await (await get('/messages')).json()).messages;
-  for (const q of ['?unread=false', '?unread=1', '?unread=', '?foo=bar', '?foo=bar&unread=TRUE']) {
+  for (const q of ['?unread=false', '?unread=1', '?unread=', '?foo=bar', '?foo=bar&unread=TRUE', '?unread=%', '?unread=%E0%A4%A']) {
     const { messages } = await (await get('/messages' + q)).json();
     assert.deepStrictEqual(messages, all, q);
   }

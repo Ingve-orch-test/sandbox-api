@@ -1,10 +1,10 @@
 const http = require('node:http');
 
 const MESSAGES = [
-  { id: 'm1', senderName: 'Ada Lovelace', preview: 'The engine is ready for review.', timestamp: '2026-11-03T09:41:00.000Z', unread: true },
-  { id: 'm2', senderName: null, preview: 'Your verification code is 123456.', timestamp: '2026-11-03T08:15:00.000Z', unread: true },
   { id: 'm3', senderName: 'Grace Hopper', preview: 'Found the bug, it was a moth.', timestamp: '2026-11-02T17:30:00.000Z', unread: false },
+  { id: 'm1', senderName: 'Ada Lovelace', preview: 'The engine is ready for review.', timestamp: '2026-11-03T09:41:00.000Z', unread: true },
   { id: 'm4', senderName: null, preview: 'Weekly digest: 3 new items.', timestamp: '2026-11-01T06:00:00.000Z', unread: false },
+  { id: 'm2', senderName: null, preview: 'Your verification code is 123456.', timestamp: '2026-11-03T08:15:00.000Z', unread: true },
 ];
 
 function listMessages(query) {
