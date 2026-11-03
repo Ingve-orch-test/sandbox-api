@@ -2,11 +2,11 @@ const { test } = require('node:test');
 const assert = require('node:assert');
 const { createServer } = require('./server');
 
-async function get(path) {
-  const server = createServer();
+async function get(path, { clock, fetchOptions } = {}) {
+  const server = createServer({ clock });
   await new Promise((resolve) => server.listen(0, resolve));
   try {
-    return await fetch(`http://localhost:${server.address().port}${path}`);
+    return await fetch(`http://localhost:${server.address().port}${path}`, fetchOptions);
   } finally {
     server.close();
   }
@@ -54,33 +54,45 @@ test('GET // returns 404 and the server keeps serving /health', async () => {
 });
 
 test('GET /version returns package.json version as JSON', async () => {
-  const res = await get('/version');
+  const res = await get('/version', { clock: () => 0 });
   assert.strictEqual(res.status, 200);
   assert.match(res.headers.get('content-type'), /^application\/json/);
-  assert.deepStrictEqual(await res.json(), { version: require('./package.json').version, node: process.version });
+  assert.deepStrictEqual(await res.json(), { version: require('./package.json').version, node: process.version, uptimeSeconds: 0 });
 });
 
-test('GET /version returns string version then node matching process.version', async () => {
+test('GET /version returns string version, node matching process.version, then integer uptimeSeconds', async () => {
   const body = await (await get('/version')).json();
-  assert.deepStrictEqual(Object.keys(body), ['version', 'node']);
+  assert.deepStrictEqual(Object.keys(body), ['version', 'node', 'uptimeSeconds']);
   assert.strictEqual(typeof body.version, 'string');
   assert.strictEqual(typeof body.node, 'string');
   assert.strictEqual(body.node, process.version);
+  assert.ok(Number.isInteger(body.uptimeSeconds) && body.uptimeSeconds >= 0);
 });
 
 test('GET /version?x=1 returns the version', async () => {
-  const res = await get('/version?x=1');
+  const res = await get('/version?x=1', { clock: () => 0 });
   assert.strictEqual(res.status, 200);
-  assert.deepStrictEqual(await res.json(), { version: require('./package.json').version, node: process.version });
+  assert.deepStrictEqual(await res.json(), { version: require('./package.json').version, node: process.version, uptimeSeconds: 0 });
 });
 
 test('POST /version returns 404', async () => {
-  const server = createServer();
+  const res = await get('/version', { fetchOptions: { method: 'POST' } });
+  assert.strictEqual(res.status, 404);
+  await res.text();
+});
+
+test('GET /version uptimeSeconds is 0 at start, 1 after 1.9s, and equals /uptime', async () => {
+  let now = 1000;
+  const server = createServer({ clock: () => now });
   await new Promise((resolve) => server.listen(0, resolve));
+  const base = `http://localhost:${server.address().port}`;
   try {
-    const res = await fetch(`http://localhost:${server.address().port}/version`, { method: 'POST' });
-    assert.strictEqual(res.status, 404);
-    await res.text();
+    assert.strictEqual((await (await fetch(base + '/version')).json()).uptimeSeconds, 0);
+    now += 1900;
+    const { uptimeSeconds } = await (await fetch(base + '/version')).json();
+    assert.strictEqual(uptimeSeconds, 1);
+    assert.ok(Number.isInteger(uptimeSeconds));
+    assert.strictEqual((await (await fetch(base + '/uptime')).json()).uptime, uptimeSeconds);
   } finally {
     server.close();
   }
@@ -115,4 +127,39 @@ test('GET /version returns 500 when package.json is unreadable or has no version
   } finally {
     fs.rmSync(dir, { recursive: true });
   }
+});
+
+test('GET /uptime is 0 right after start, as JSON', async () => {
+  const res = await get('/uptime', { clock: () => 5000 });
+  assert.strictEqual(res.status, 200);
+  assert.match(res.headers.get('content-type'), /^application\/json/);
+  assert.deepStrictEqual(await res.json(), { uptime: 0 });
+});
+
+test('GET /uptime reports whole seconds, rounded down', async () => {
+  let now = 1000;
+  const server = createServer({ clock: () => now });
+  await new Promise((resolve) => server.listen(0, resolve));
+  const url = `http://localhost:${server.address().port}/uptime`;
+  try {
+    now += 1900;
+    assert.deepStrictEqual(await (await fetch(url)).json(), { uptime: 1 });
+    now += 40100;
+    assert.deepStrictEqual(await (await fetch(url)).json(), { uptime: 42 });
+  } finally {
+    server.close();
+  }
+});
+
+test('GET /uptime?x=1 returns 200', async () => {
+  const res = await get('/uptime?x=1');
+  assert.strictEqual(res.status, 200);
+  const { uptime } = await res.json();
+  assert.ok(Number.isInteger(uptime) && uptime >= 0);
+});
+
+test('POST /uptime returns 404', async () => {
+  const res = await get('/uptime', { fetchOptions: { method: 'POST' } });
+  assert.strictEqual(res.status, 404);
+  await res.text();
 });

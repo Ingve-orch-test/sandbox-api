@@ -16,17 +16,25 @@ function readVersion(file) {
   }
 }
 
-function createServer({ packageFile = path.join(__dirname, 'package.json') } = {}) {
+// clock returns monotonic milliseconds; the default is immune to wall-clock changes.
+function createServer({ packageFile = path.join(__dirname, 'package.json'), clock = () => performance.now() } = {}) {
+  const start = clock();
+  const uptimeSeconds = () => Math.max(0, Math.floor((clock() - start) / 1000));
   const info = readVersion(packageFile);
   return http.createServer((req, res) => {
     if (req.method === 'GET' && req.url.split('?')[0] === '/version') {
       res.writeHead('error' in info ? 500 : 200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify(info));
+      res.end(JSON.stringify('error' in info ? info : { ...info, uptimeSeconds: uptimeSeconds() }));
       return;
     }
     if (req.method === 'GET' && req.url.split('?')[0] === '/health') {
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ status: 'ok' }));
+      return;
+    }
+    if (req.method === 'GET' && req.url.split('?')[0] === '/uptime') {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ uptime: uptimeSeconds() }));
       return;
     }
     res.writeHead(404, { 'Content-Type': 'application/json' });
