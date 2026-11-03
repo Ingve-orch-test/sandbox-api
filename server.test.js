@@ -53,6 +53,31 @@ test('GET // returns 404 and the server keeps serving /health', async () => {
   }
 });
 
+test('GET /ping returns 200, exact body pong and text/plain content type', async () => {
+  const res = await get('/ping');
+  assert.strictEqual(res.status, 200);
+  assert.strictEqual(res.headers.get('content-type'), 'text/plain; charset=utf-8');
+  assert.strictEqual(await res.text(), 'pong');
+});
+
+test('GET /ping?x=1 returns 200 and pong', async () => {
+  const res = await get('/ping?x=1');
+  assert.strictEqual(res.status, 200);
+  assert.strictEqual(await res.text(), 'pong');
+});
+
+test('POST /ping returns 404', async () => {
+  const server = createServer();
+  await new Promise((resolve) => server.listen(0, resolve));
+  try {
+    const res = await fetch(`http://localhost:${server.address().port}/ping`, { method: 'POST' });
+    assert.strictEqual(res.status, 404);
+    await res.text();
+  } finally {
+    server.close();
+  }
+});
+
 test('GET /version returns package.json version as JSON', async () => {
   const res = await get('/version');
   assert.strictEqual(res.status, 200);
