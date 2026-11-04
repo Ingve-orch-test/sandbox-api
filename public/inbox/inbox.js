@@ -48,6 +48,7 @@
 
   function showStatus(message, isError) {
     list.textContent = '';
+    countEl.textContent = '';
     countEl.hidden = true;
     status.hidden = false;
     status.className = isError ? 'status error' : 'status';
@@ -68,9 +69,11 @@
     status.hidden = true;
     list.textContent = '';
     messages.forEach(function (m) { list.appendChild(row(m)); });
-    var unread = messages.filter(function (m) { return m.unread; }).length;
-    countEl.textContent = unread + ' unread';
-    countEl.hidden = unread === 0;
+    var badge = window.InboxUnread.badgeState(messages);
+    countEl.textContent = badge.text;
+    if (badge.label) countEl.setAttribute('aria-label', badge.label);
+    else countEl.removeAttribute('aria-label');
+    countEl.hidden = badge.hidden;
   }
 
   function load() {
