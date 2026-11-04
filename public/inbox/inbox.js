@@ -2,6 +2,7 @@
   var list = document.getElementById('list');
   var status = document.getElementById('status');
   var countEl = document.getElementById('unread-count');
+  var markAllBtn = document.getElementById('mark-all-read');
 
   function initials(name) {
     var parts = String(name || '').trim().split(/\s+/).filter(Boolean);
@@ -50,6 +51,7 @@
     list.textContent = '';
     countEl.textContent = '';
     countEl.hidden = true;
+    markAllBtn.hidden = true;
     status.hidden = false;
     status.className = isError ? 'status error' : 'status';
     status.textContent = message;
@@ -74,7 +76,22 @@
     if (badge.label) countEl.setAttribute('aria-label', badge.label);
     else countEl.removeAttribute('aria-label');
     countEl.hidden = badge.hidden;
+    markAllBtn.hidden = window.InboxUnread.markAllReadState(messages).hidden;
   }
+
+  markAllBtn.addEventListener('click', function () {
+    markAllBtn.disabled = true;
+    fetch('/messages/read-all', { method: 'POST' })
+      .then(function (res) {
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        markAllBtn.disabled = false;
+        load();
+      })
+      .catch(function () {
+        markAllBtn.disabled = false;
+        showStatus('Could not mark messages as read.', true);
+      });
+  });
 
   function load() {
     showStatus('Loading…', false);

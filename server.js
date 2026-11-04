@@ -58,6 +58,13 @@ function createServer({ store = createStore() } = {}) {
       res.end(JSON.stringify({ messages: store.list({ unreadOnly }) }));
       return;
     }
+    // POST /messages/read-all -> 200 { updated: <number newly marked read>, messages: [...] }
+    if (req.method === 'POST' && path === '/messages/read-all') {
+      const updated = store.markAllRead();
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ updated, messages: store.list() }));
+      return;
+    }
     if (req.method === 'GET' && serveInbox(path, res)) return;
     notFound(res);
   });

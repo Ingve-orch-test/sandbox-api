@@ -176,3 +176,47 @@ test('unread.js is served and the page loads it before inbox.js', async () => {
   const html = await (await get('/inbox')).text();
   assert.ok(html.indexOf('/inbox/unread.js') !== -1 && html.indexOf('/inbox/unread.js') < html.indexOf('/inbox/inbox.js'));
 });
+
+test('POST /messages/read-all marks every message read and persists', async () => {
+  const server = createServer({ store: createStore() });
+  await new Promise((resolve) => server.listen(0, resolve));
+  const base = `http://localhost:${server.address().port}`;
+  try {
+    const before = (await (await fetch(`${base}/messages`)).json()).messages;
+    const res = await fetch(`${base}/messages/read-all`, { method: 'POST' });
+    assert.strictEqual(res.status, 200);
+    const body = await res.json();
+    assert.strictEqual(body.updated, before.filter((m) => m.unread).length);
+    assert.ok(body.messages.every((m) => m.unread === false));
+    const after = (await (await fetch(`${base}/messages`)).json()).messages;
+    assert.strictEqual(after.length, before.length);
+    assert.ok(after.every((m) => m.unread === false));
+    assert.strictEqual((await (await fetch(`${base}/messages?unread=true`)).json()).messages.length, 0);
+    assert.strictEqual((await (await fetch(`${base}/messages/read-all`, { method: 'POST' })).json()).updated, 0);
+  } finally {
+    server.close();
+  }
+});
+
+test('read-all rejects wrong methods and paths with 404 JSON', async () => {
+  for (const [method, p] of [['GET', '/messages/read-all'], ['PUT', '/messages/read-all'], ['POST', '/messages/read-all/x'], ['POST', '/read-all']]) {
+    const res = await get(p, { method });
+    assert.strictEqual(res.status, 404, `${method} ${p}`);
+    assert.deepStrictEqual(await res.json(), { error: 'not found' });
+  }
+});
+
+test('store.markAllRead mutates the stored messages', () => {
+  const store = createStore();
+  assert.ok(store.markAllRead() > 0);
+  assert.ok(store.list().every((m) => !m.unread));
+  assert.strictEqual(store.markAllRead(), 0);
+});
+
+test('mark-all-read button state: hidden at 0 unread, shown when >0', () => {
+  const { markAllReadState } = require('./public/inbox/unread.js');
+  assert.strictEqual(markAllReadState([]).hidden, true);
+  assert.strictEqual(markAllReadState(undefined).hidden, true);
+  assert.strictEqual(markAllReadState([{ unread: false }]).hidden, true);
+  assert.strictEqual(markAllReadState([{ unread: false }, { unread: true }]).hidden, false);
+});
