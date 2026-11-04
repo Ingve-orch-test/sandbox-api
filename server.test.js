@@ -153,3 +153,26 @@ test('non-GET on /inbox is 404 and /messages still works', async () => {
   }
   assert.strictEqual((await get('/messages')).status, 200);
 });
+
+test('unreadCount counts only unread messages', () => {
+  const { unreadCount } = require('./public/inbox/unread');
+  assert.strictEqual(unreadCount([{ unread: true }, { unread: false }, { unread: true }]), 2);
+  assert.strictEqual(unreadCount([]), 0);
+  assert.strictEqual(unreadCount(undefined), 0);
+});
+
+test('badge shows the unread number and is hidden at 0', () => {
+  const { badgeState } = require('./public/inbox/unread');
+  assert.deepStrictEqual(badgeState([{ unread: true }, { unread: true }, { unread: false }]),
+    { hidden: false, text: '2', label: '2 unread' });
+  assert.deepStrictEqual(badgeState([{ unread: false }]), { hidden: true, text: '', label: '' });
+  assert.deepStrictEqual(badgeState([]), { hidden: true, text: '', label: '' });
+});
+
+test('unread.js is served and the page loads it before inbox.js', async () => {
+  const js = await get('/inbox/unread.js');
+  assert.strictEqual(js.status, 200);
+  assert.strictEqual(js.headers.get('content-type'), 'text/javascript; charset=utf-8');
+  const html = await (await get('/inbox')).text();
+  assert.ok(html.indexOf('/inbox/unread.js') !== -1 && html.indexOf('/inbox/unread.js') < html.indexOf('/inbox/inbox.js'));
+});
