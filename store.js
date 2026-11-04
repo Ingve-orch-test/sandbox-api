@@ -21,6 +21,13 @@ function createStore(seed = SEED) {
       }
       return changed;
     },
+    // Removes the message with this id; returns true if one was removed.
+    remove(id) {
+      const i = messages.findIndex((m) => m.id === id);
+      if (i === -1) return false;
+      messages.splice(i, 1);
+      return true;
+    },
   };
 }
 

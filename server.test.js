@@ -231,3 +231,26 @@ test('GET /messages/<id> returns one message, and 404 for an unknown id', async 
   assert.strictEqual(miss.status, 404);
   assert.deepStrictEqual(await miss.json(), { error: 'not found' });
 });
+
+test('DELETE /messages/<id> removes the message, 404 for unknown or repeated id', async () => {
+  const server = createServer({ store: createStore() });
+  await new Promise((resolve) => server.listen(0, resolve));
+  const base = `http://localhost:${server.address().port}`;
+  try {
+    const before = (await (await fetch(`${base}/messages`)).json()).messages;
+    const del = await fetch(`${base}/messages/m1`, { method: 'DELETE' });
+    assert.strictEqual(del.status, 204);
+    assert.strictEqual(await del.text(), '');
+    const after = (await (await fetch(`${base}/messages`)).json()).messages;
+    assert.strictEqual(after.length, before.length - 1);
+    assert.ok(!after.some((m) => m.id === 'm1'));
+    for (const p of ['/messages/m1', '/messages/nope']) {
+      const miss = await fetch(`${base}${p}`, { method: 'DELETE' });
+      assert.strictEqual(miss.status, 404, p);
+      assert.deepStrictEqual(await miss.json(), { error: 'not found' });
+    }
+    assert.strictEqual((await fetch(`${base}/messages/m1`)).status, 404);
+  } finally {
+    server.close();
+  }
+});

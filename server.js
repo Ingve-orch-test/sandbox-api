@@ -77,6 +77,17 @@ function createServer({ store = createStore() } = {}) {
       res.end(JSON.stringify({ message }));
       return;
     }
+    // DELETE /messages/<id> -> 204 (no body), 404 if unknown
+    if (req.method === 'DELETE' && path.startsWith('/messages/') && path !== '/messages/read-all') {
+      const id = path.slice('/messages/'.length);
+      if (!store.remove(id)) {
+        notFound(res);
+        return;
+      }
+      res.writeHead(204);
+      res.end();
+      return;
+    }
     if (req.method === 'GET' && serveInbox(path, res)) return;
     notFound(res);
   });
