@@ -3,6 +3,12 @@
   var status = document.getElementById('status');
   var countEl = document.getElementById('unread-count');
   var markAllBtn = document.getElementById('mark-all-read');
+  var current = []; // messages currently shown, kept in sync with the DOM
+  var errorEl = document.createElement('div');
+  errorEl.className = 'inline-error';
+  errorEl.setAttribute('role', 'alert');
+  errorEl.hidden = true;
+  list.parentNode.insertBefore(errorEl, list);
 
   function initialsfn(name) {
     var parts = String(name || '').trim().split(/\s+/).filter(Boolean);
@@ -44,10 +50,16 @@
     text.appendChild(element('div', 'sender', message.senderName));
     text.appendChild(element('div', 'title', message.title));
     li.appendChild(text);
+    var del = element('button', 'delete-btn', 'Delete');
+    del.type = 'button';
+    del.setAttribute('aria-label', 'Delete message');
+    del.addEventListener('click', function () { deleteMessage(message.id, li, del); });
+    li.appendChild(del);
     return li;
   }
 
   function showStatus(message, isError) {
+    errorEl.hidden = true;
     list.textContent = '';
     countEl.textContent = '';
     countEl.hidden = true;
@@ -63,7 +75,37 @@
     }
   }
 
+  function updateSummary() {
+    var badge = window.InboxUnread.badgeState(current);
+    countEl.textContent = badge.text;
+    if (badge.label) countEl.setAttribute('aria-label', badge.label);
+    else countEl.removeAttribute('aria-label');
+    countEl.hidden = badge.hidden;
+    markAllBtn.hidden = false;
+    markAllBtn.disabled = window.InboxUnread.markAllReadState(current).disabled;
+  }
+
+  function deleteMessage(id, li, btn) {
+    btn.disabled = true;
+    errorEl.hidden = true;
+    fetch('/messages/' + encodeURIComponent(id), { method: 'DELETE' })
+      .then(function (res) {
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        current = window.InboxUnread.removeMessage(current, id);
+        if (li.parentNode) li.parentNode.removeChild(li);
+        if (current.length === 0) showStatus('No messages', false);
+        else updateSummary();
+      })
+      .catch(function () {
+        btn.disabled = false;
+        errorEl.textContent = 'Could not delete message.';
+        errorEl.hidden = false;
+      });
+  }
+
   function render(messages) {
+    current = messages.slice();
+    errorEl.hidden = true;
     if (messages.length === 0) {
       showStatus('No messages', false);
       return;
@@ -71,13 +113,7 @@
     status.hidden = true;
     list.textContent = '';
     messages.forEach(function (m) { list.appendChild(row(m)); });
-    var badge = window.InboxUnread.badgeState(messages);
-    countEl.textContent = badge.text;
-    if (badge.label) countEl.setAttribute('aria-label', badge.label);
-    else countEl.removeAttribute('aria-label');
-    countEl.hidden = badge.hidden;
-    markAllBtn.hidden = false;
-    markAllBtn.disabled = window.InboxUnread.markAllReadState(messages).disabled;
+    updateSummary();
   }
 
   markAllBtn.addEventListener('click', function () {

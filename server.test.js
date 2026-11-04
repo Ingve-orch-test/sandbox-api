@@ -254,3 +254,21 @@ test('DELETE /messages/<id> removes the message, 404 for unknown or repeated id'
     server.close();
   }
 });
+
+test('removeMessage drops only the deleted id and does not mutate', () => {
+  const { removeMessage, unreadCount, badgeState, markAllReadState } = require('./public/inbox/unread.js');
+  const msgs = [{ id: 'a', unread: true }, { id: 'b', unread: false }, { id: 'c', unread: true }];
+  const after = removeMessage(msgs, 'b');
+  assert.deepStrictEqual(after.map((m) => m.id), ['a', 'c']);
+  assert.strictEqual(msgs.length, 3);
+  assert.deepStrictEqual(removeMessage(msgs, 'zzz').map((m) => m.id), ['a', 'b', 'c']);
+  assert.deepStrictEqual(removeMessage(undefined, 'a'), []);
+  // deleting a read message keeps the unread count
+  assert.strictEqual(unreadCount(after), 2);
+  // deleting an unread message lowers it
+  assert.strictEqual(unreadCount(removeMessage(msgs, 'a')), 1);
+  // deleting the last unread hides the badge and disables mark-all
+  const last = removeMessage([{ id: 'a', unread: true }, { id: 'b', unread: false }], 'a');
+  assert.strictEqual(badgeState(last).hidden, true);
+  assert.strictEqual(markAllReadState(last).disabled, true);
+});

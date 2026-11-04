@@ -21,7 +21,13 @@
     return { disabled: unreadCount(messages) === 0 };
   }
 
-  var api = { unreadCount: unreadCount, badgeState: badgeState, markAllReadState: markAllReadState };
+  // New messages array with the message of the given id removed (input untouched).
+  function removeMessage(messages, id) {
+    if (!Array.isArray(messages)) return [];
+    return messages.filter(function (m) { return !(m && m.id === id); });
+  }
+
+  var api = { removeMessage: removeMessage, unreadCount: unreadCount, badgeState: badgeState, markAllReadState: markAllReadState };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.InboxUnread = api;
 })(typeof self !== 'undefined' ? self : this);
