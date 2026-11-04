@@ -26,3 +26,8 @@ body { margin: 0; background: #f3f4f6; color: #111827; }
 .status { background: #fff; border-radius: 12px; padding: 32px 16px; text-align: center; color: #6b7280; box-shadow: 0 1px 3px rgba(0,0,0,.12); }
 .status.error { color: #b91c1c; }
 .status button { display: block; margin: 12px auto 0; padding: 8px 16px; border: 0; border-radius: 8px; background: #2563eb; color: #fff; font: inherit; cursor: pointer; }
+.inline-error[hidden] { display: none; }
+.inline-error { background: #fef2f2; color: #b91c1c; border-radius: 8px; padding: 8px 12px; margin-bottom: 12px; font-size: 13px; }
+.delete-btn { flex: none; padding: 2px 10px; border: 1px solid #9ca3af; border-radius: 8px; background: #fff; color: #374151; font: inherit; font-size: 12px; cursor: pointer; }
+.delete-btn:hover:not(:disabled) { background: #f3f4f6; }
+.delete-btn:disabled { background: #f3f4f6; border-color: #e5e7eb; color: #9ca3af; cursor: not-allowed; }
