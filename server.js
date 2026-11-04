@@ -65,6 +65,18 @@ function createServer({ store = createStore() } = {}) {
       res.end(JSON.stringify({ updated, messages: store.list() }));
       return;
     }
+    // GET /messages/<id> -> 200 { message }, 404 if unknown
+    if (req.method === 'GET' && path.startsWith('/messages/') && path !== '/messages/read-all') {
+      const id = path.slice('/messages/'.length);
+      const message = store.list().find((m) => m.id === id);
+      if (!message) {
+        notFound(res);
+        return;
+      }
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ message }));
+      return;
+    }
     if (req.method === 'GET' && serveInbox(path, res)) return;
     notFound(res);
   });
