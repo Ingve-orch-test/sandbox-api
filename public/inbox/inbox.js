@@ -4,15 +4,15 @@
   var countEl = document.getElementById('unread-count');
   var markAllBtn = document.getElementById('mark-all-read');
 
-  function initials(name) {
+  function initialsfn(name) {
     var parts = String(name || '').trim().split(/\s+/).filter(Boolean);
     if (parts.length === 0) return '?';
     var first = parts[0].charAt(0);
     var last = parts.length > 1 ? parts[parts.length - 1].charAt(0) : '';
-    return (first + last).toUpperCase();
+    return (first+last).toUpperCase();
   }
 
-  function el(tag, className, text) {
+  function element(tag, className, text) {
     var node = document.createElement(tag);
     if (className) node.className = className;
     if (text !== undefined) node.textContent = text;
@@ -20,9 +20,9 @@
   }
 
   function avatar(message) {
-    var box = el('div', 'avatar');
+    var box = element('div', 'avatar');
     var showInitials = function () {
-      box.textContent = initials(message.senderName);
+      box.textContent = initialsfn(message.senderName);
     };
     if (typeof message.senderImage === 'string' && message.senderImage) {
       var img = document.createElement('img');
@@ -37,12 +37,12 @@
   }
 
   function row(message) {
-    var li = el('li', message.unread ? 'row unread' : 'row');
-    li.appendChild(el('span', 'dot'));
+    var li = element('li', message.unread ? 'row unread' : 'row');
+    li.appendChild(element('span', 'dot'));
     li.appendChild(avatar(message));
-    var text = el('div', 'text');
-    text.appendChild(el('div', 'sender', message.senderName));
-    text.appendChild(el('div', 'title', message.title));
+    var text = element('div', 'text');
+    text.appendChild(element('div', 'sender', message.senderName));
+    text.appendChild(element('div', 'title', message.title));
     li.appendChild(text);
     return li;
   }
@@ -56,7 +56,7 @@
     status.className = isError ? 'status error' : 'status';
     status.textContent = message;
     if (isError) {
-      var retry = el('button', '', 'Retry');
+      var retry = element('button', '', 'Retry');
       retry.type = 'button';
       retry.addEventListener('click', load);
       status.appendChild(retry);
