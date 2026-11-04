@@ -222,3 +222,12 @@ test('mark-all-read button state: disabled at 0 unread, enabled when >0', () => 
   assert.strictEqual(markAllReadState([{ unread: false }, { unread: true }]).disabled, false);
   assert.strictEqual('hidden' in markAllReadState([]), false);
 });
+
+test('GET /messages/<id> returns one message, and 404 for an unknown id', async () => {
+  const hit = await get('/messages/m1');
+  assert.strictEqual(hit.status, 200);
+  assert.strictEqual((await hit.json()).message.id, 'm1');
+  const miss = await get('/messages/nope');
+  assert.strictEqual(miss.status, 404);
+  assert.deepStrictEqual(await miss.json(), { error: 'not found' });
+});
