@@ -16,9 +16,9 @@
     };
   }
 
-  // "Mark all as read" button is shown only when something is unread.
+  // "Mark all as read" button is always shown; disabled when nothing is unread.
   function markAllReadState(messages) {
-    return { hidden: unreadCount(messages) === 0 };
+    return { disabled: unreadCount(messages) === 0 };
   }
 
   var api = { unreadCount: unreadCount, badgeState: badgeState, markAllReadState: markAllReadState };

@@ -213,10 +213,12 @@ test('store.markAllRead mutates the stored messages', () => {
   assert.strictEqual(store.markAllRead(), 0);
 });
 
-test('mark-all-read button state: hidden at 0 unread, shown when >0', () => {
+test('mark-all-read button state: disabled at 0 unread, enabled when >0', () => {
   const { markAllReadState } = require('./public/inbox/unread.js');
-  assert.strictEqual(markAllReadState([]).hidden, true);
-  assert.strictEqual(markAllReadState(undefined).hidden, true);
-  assert.strictEqual(markAllReadState([{ unread: false }]).hidden, true);
-  assert.strictEqual(markAllReadState([{ unread: false }, { unread: true }]).hidden, false);
+  assert.strictEqual(markAllReadState([]).disabled, true);
+  assert.strictEqual(markAllReadState(undefined).disabled, true);
+  assert.strictEqual(markAllReadState('x').disabled, true);
+  assert.strictEqual(markAllReadState([{ unread: false }]).disabled, true);
+  assert.strictEqual(markAllReadState([{ unread: false }, { unread: true }]).disabled, false);
+  assert.strictEqual('hidden' in markAllReadState([]), false);
 });

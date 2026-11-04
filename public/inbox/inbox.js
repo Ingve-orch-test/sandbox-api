@@ -51,7 +51,7 @@
     list.textContent = '';
     countEl.textContent = '';
     countEl.hidden = true;
-    markAllBtn.hidden = true;
+    markAllBtn.hidden = true; // hidden whenever the list isn't shown (loading, error, empty)
     status.hidden = false;
     status.className = isError ? 'status error' : 'status';
     status.textContent = message;
@@ -76,7 +76,8 @@
     if (badge.label) countEl.setAttribute('aria-label', badge.label);
     else countEl.removeAttribute('aria-label');
     countEl.hidden = badge.hidden;
-    markAllBtn.hidden = window.InboxUnread.markAllReadState(messages).hidden;
+    markAllBtn.hidden = false;
+    markAllBtn.disabled = window.InboxUnread.markAllReadState(messages).disabled;
   }
 
   markAllBtn.addEventListener('click', function () {
@@ -84,7 +85,6 @@
     fetch('/messages/read-all', { method: 'POST' })
       .then(function (res) {
         if (!res.ok) throw new Error('HTTP ' + res.status);
-        markAllBtn.disabled = false;
         load();
       })
       .catch(function () {
