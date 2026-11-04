@@ -13,6 +13,14 @@ function createStore(seed = SEED) {
     list({ unreadOnly = false } = {}) {
       return messages.filter((m) => !unreadOnly || m.unread).map((m) => ({ ...m }));
     },
+    // Marks every stored message read; returns how many changed.
+    markAllRead() {
+      let changed = 0;
+      for (const m of messages) {
+        if (m.unread) { m.unread = false; changed++; }
+      }
+      return changed;
+    },
   };
 }
 

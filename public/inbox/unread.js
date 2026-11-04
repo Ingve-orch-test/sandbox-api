@@ -16,7 +16,12 @@
     };
   }
 
-  var api = { unreadCount: unreadCount, badgeState: badgeState };
+  // "Mark all as read" button is always shown; disabled when nothing is unread.
+  function markAllReadState(messages) {
+    return { disabled: unreadCount(messages) === 0 };
+  }
+
+  var api = { unreadCount: unreadCount, badgeState: badgeState, markAllReadState: markAllReadState };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.InboxUnread = api;
 })(typeof self !== 'undefined' ? self : this);
