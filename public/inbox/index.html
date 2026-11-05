@@ -13,6 +13,11 @@
       <span id="unread-count" class="unread-count" hidden></span>
       <button id="mark-all-read" class="mark-all-read" type="button" hidden>Mark all as read</button>
     </header>
+    <div class="toolbar">
+      <input id="search" class="search" type="search" placeholder="Search messages" aria-label="Search messages">
+      <button id="view-inbox" class="view-btn active" type="button" aria-pressed="true">Inbox</button>
+      <button id="view-archive" class="view-btn" type="button" aria-pressed="false">Archive</button>
+    </div>
     <div id="status" class="status" role="status" aria-live="polite" hidden></div>
     <ul id="list" class="list"></ul>
   </main>

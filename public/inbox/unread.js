@@ -27,7 +27,16 @@
     return messages.filter(function (m) { return !(m && m.id === id); });
   }
 
-  var api = { removeMessage: removeMessage, unreadCount: unreadCount, badgeState: badgeState, markAllReadState: markAllReadState };
+  // Query string for GET /messages: '' for the plain inbox, so the default request is unchanged.
+  function listQuery(search, archived) {
+    var parts = [];
+    var q = String(search || '').trim();
+    if (q) parts.push('q=' + encodeURIComponent(q));
+    if (archived) parts.push('archived=true');
+    return parts.join('&');
+  }
+
+  var api = { listQuery: listQuery, removeMessage: removeMessage, unreadCount: unreadCount, badgeState: badgeState, markAllReadState: markAllReadState };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.InboxUnread = api;
 })(typeof self !== 'undefined' ? self : this);

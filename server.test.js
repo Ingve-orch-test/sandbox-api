@@ -272,3 +272,116 @@ test('removeMessage drops only the deleted id and does not mutate', () => {
   assert.strictEqual(badgeState(last).hidden, true);
   assert.strictEqual(markAllReadState(last).disabled, true);
 });
+
+// ---- issue #47: search + archive ----
+const FIVE = ['id', 'senderImage', 'senderName', 'title', 'unread'];
+async function withServer(fn, opts = { store: createStore() }) {
+  const server = createServer(opts);
+  await new Promise((resolve) => server.listen(0, resolve));
+  const base = `http://localhost:${server.address().port}`;
+  const ids = async (p) => (await (await fetch(base + p)).json()).messages.map((m) => m.id);
+  try { await fn(base, ids); } finally { server.close(); }
+}
+
+test('?q= searches sender and title case-insensitively; blank q is a no-op', async () => {
+  await withServer(async (base, ids) => {
+    const all = await ids('/messages');
+    assert.deepStrictEqual(await ids('/messages?q=ADA'), ['m1']);
+    assert.deepStrictEqual(await ids('/messages?q=moth'), ['m2']);
+    assert.deepStrictEqual(await ids('/messages?q=zzzz'), []);
+    assert.deepStrictEqual(await ids('/messages?q='), all);
+    assert.deepStrictEqual(await ids('/messages?q=%20%20'), all);
+    assert.deepStrictEqual(await ids('/messages?q=re%3A'), ['m3']);
+    // ANDs with unread=true: m2 matches "moth" but is read
+    assert.deepStrictEqual(await ids('/messages?q=moth&unread=true'), []);
+    assert.deepStrictEqual(await ids('/messages?q=ada&unread=true'), ['m1']);
+  });
+});
+
+test('archive hides from default, shows under archived=true/all; unarchive restores', async () => {
+  await withServer(async (base, ids) => {
+    const all = await ids('/messages');
+    const r = await fetch(`${base}/messages/m1/archive`, { method: 'POST' });
+    assert.strictEqual(r.status, 200);
+    const { message } = await r.json();
+    assert.deepStrictEqual(Object.keys(message).sort(), FIVE);
+    assert.strictEqual(message.id, 'm1');
+    assert.deepStrictEqual(await ids('/messages'), all.filter((i) => i !== 'm1'));
+    assert.ok(!(await ids('/messages?unread=true')).includes('m1'));
+    assert.deepStrictEqual(await ids('/messages?archived=true'), ['m1']);
+    assert.deepStrictEqual(await ids('/messages?archived=all'), all);
+    for (const v of ['false', '1', 'x']) assert.deepStrictEqual(await ids('/messages?archived=' + v), all.filter((i) => i !== 'm1'), v);
+    assert.deepStrictEqual(await ids('/messages?archived=true&q=ada'), ['m1']);
+    assert.deepStrictEqual(await ids('/messages?archived=true&q=grace'), []);
+    // idempotent, and still reachable by id
+    assert.strictEqual((await fetch(`${base}/messages/m1/archive`, { method: 'POST' })).status, 200);
+    assert.strictEqual((await (await fetch(`${base}/messages/m1`)).json()).message.id, 'm1');
+    const u = await fetch(`${base}/messages/m1/unarchive`, { method: 'POST' });
+    assert.strictEqual(u.status, 200);
+    assert.strictEqual((await u.json()).message.id, 'm1');
+    assert.strictEqual((await fetch(`${base}/messages/m1/unarchive`, { method: 'POST' })).status, 200);
+    assert.deepStrictEqual(await ids('/messages'), all);
+    assert.deepStrictEqual(await ids('/messages?archived=true'), []);
+  });
+});
+
+test('archive endpoints: unknown id and wrong methods are 404 JSON', async () => {
+  await withServer(async (base) => {
+    for (const [method, p] of [['POST', '/messages/nope/archive'], ['POST', '/messages/nope/unarchive'],
+      ['GET', '/messages/m1/archive'], ['DELETE', '/messages/m1/archive'], ['PUT', '/messages/m1/unarchive'],
+      ['POST', '/messages/m1/archive/x'], ['POST', '/messages//archive']]) {
+      const res = await fetch(base + p, { method });
+      assert.strictEqual(res.status, 404, `${method} ${p}`);
+      assert.deepStrictEqual(await res.json(), { error: 'not found' });
+    }
+  });
+});
+
+test('archived messages keep the five-field shape in every list; read-all covers them', async () => {
+  await withServer(async (base) => {
+    await fetch(`${base}/messages/m1/archive`, { method: 'POST' });
+    for (const p of ['/messages', '/messages?archived=true', '/messages?archived=all']) {
+      for (const m of (await (await fetch(base + p)).json()).messages) assert.deepStrictEqual(Object.keys(m).sort(), FIVE, p);
+    }
+    const ra = await (await fetch(`${base}/messages/read-all`, { method: 'POST' })).json();
+    assert.strictEqual(ra.updated, 2); // m1 (archived) and m3
+    assert.ok(!ra.messages.some((m) => m.id === 'm1'));
+    const arch = (await (await fetch(`${base}/messages?archived=true`)).json()).messages;
+    assert.strictEqual(arch[0].unread, false);
+    assert.strictEqual((await fetch(`${base}/messages/m1`, { method: 'DELETE' })).status, 204);
+    assert.deepStrictEqual((await (await fetch(`${base}/messages?archived=all`)).json()).messages.map((m) => m.id), ['m2', 'm3', 'm4']);
+  });
+});
+
+test('store.list archived/q filters and setArchived', () => {
+  const store = createStore();
+  assert.strictEqual(store.setArchived('nope', true), null);
+  assert.strictEqual(store.setArchived('m2', true).id, 'm2');
+  assert.deepStrictEqual(store.list().map((m) => m.id), ['m1', 'm3', 'm4']);
+  assert.deepStrictEqual(store.list({ archived: true }).map((m) => m.id), ['m2']);
+  assert.strictEqual(store.list({ archived: 'all' }).length, 4);
+  assert.deepStrictEqual(store.list({ q: 'TURING' }).map((m) => m.id), ['m3']);
+  assert.ok(store.list({ archived: 'all' }).every((m) => !('archived' in m)));
+  store.setArchived('m2', false);
+  assert.strictEqual(store.list().length, 4);
+});
+
+test('inbox page has the search box and view toggle, and keeps the default fetch', async () => {
+  const html = await (await get('/inbox')).text();
+  assert.match(html, /id="search"/);
+  assert.match(html, /id="view-inbox"/);
+  assert.match(html, /id="view-archive"/);
+  const js = await (await get('/inbox/inbox.js')).text();
+  assert.ok(js.includes("fetch('/messages')"));
+  assert.match(js, /No matches/);
+});
+
+test('listQuery is empty for the plain inbox and encodes search/archive', () => {
+  const { listQuery } = require('./public/inbox/unread.js');
+  assert.strictEqual(listQuery('', false), '');
+  assert.strictEqual(listQuery('   ', false), '');
+  assert.strictEqual(listQuery(undefined, undefined), '');
+  assert.strictEqual(listQuery(' a&b ', false), 'q=a%26b');
+  assert.strictEqual(listQuery('', true), 'archived=true');
+  assert.strictEqual(listQuery('x', true), 'q=x&archived=true');
+});

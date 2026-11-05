@@ -9,9 +9,24 @@ const SEED = [
 
 function createStore(seed = SEED) {
   const messages = seed.map((m) => ({ ...m }));
+  const archived = new Set(); // internal only; never part of the message JSON
   return {
-    list({ unreadOnly = false } = {}) {
-      return messages.filter((m) => !unreadOnly || m.unread).map((m) => ({ ...m }));
+    // archived: false (default) -> not archived, true -> only archived, 'all' -> both.
+    // q: case-insensitive substring of senderName or title; blank is a no-op.
+    list({ unreadOnly = false, archived: arch = false, q = '' } = {}) {
+      const needle = String(q).trim().toLowerCase();
+      return messages
+        .filter((m) => !unreadOnly || m.unread)
+        .filter((m) => arch === 'all' || archived.has(m.id) === (arch === true))
+        .filter((m) => !needle || m.senderName.toLowerCase().includes(needle) || m.title.toLowerCase().includes(needle))
+        .map((m) => ({ ...m }));
+    },
+    // Archives (true) or unarchives (false); idempotent. Returns a message copy, or null if unknown.
+    setArchived(id, value) {
+      const m = messages.find((x) => x.id === id);
+      if (!m) return null;
+      if (value) archived.add(id); else archived.delete(id);
+      return { ...m };
     },
     // Marks every stored message read; returns how many changed.
     markAllRead() {
@@ -25,6 +40,7 @@ function createStore(seed = SEED) {
     remove(id) {
       const i = messages.findIndex((m) => m.id === id);
       if (i === -1) return false;
+      archived.delete(id);
       messages.splice(i, 1);
       return true;
     },
