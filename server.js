@@ -56,7 +56,7 @@ function createServer({ store = createStore() } = {}) {
       const params = new URLSearchParams(query);
       const unreadOnly = params.get('unread') === 'true';
       const a = params.get('archived');
-      const archived = a === 'true' ? true : a === 'all' ? 'all' : false;
+      const archived = a === 'true' ? true : a === 'false' ? false : 'all'; // anything else: everything
       const search = params.get('q') || '';
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ messages: store.list({ unreadOnly, archived, q: search }) }));

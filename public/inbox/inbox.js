@@ -158,7 +158,7 @@
     showStatus('Loading…', false);
     var mine = ++requestId;
     var qs = window.InboxUnread.listQuery(searchTerm, archivedView);
-    (qs ? fetch('/messages?' + qs) : fetch('/messages'))
+    fetch('/messages?' + qs)
       .then(function (res) {
         if (!res.ok) throw new Error('HTTP ' + res.status);
         return res.json();

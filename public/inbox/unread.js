@@ -27,12 +27,12 @@
     return messages.filter(function (m) { return !(m && m.id === id); });
   }
 
-  // Query string for GET /messages: '' for the plain inbox, so the default request is unchanged.
+  // Query string for GET /messages: the inbox view asks for archived=false, the archive view for archived=true.
   function listQuery(search, archived) {
     var parts = [];
     var q = String(search || '').trim();
     if (q) parts.push('q=' + encodeURIComponent(q));
-    if (archived) parts.push('archived=true');
+    parts.push(archived ? 'archived=true' : 'archived=false');
     return parts.join('&');
   }
 

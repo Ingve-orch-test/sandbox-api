@@ -11,13 +11,13 @@ function createStore(seed = SEED) {
   const messages = seed.map((m) => ({ ...m }));
   const archived = new Set(); // internal only; never part of the message JSON
   return {
-    // archived: false (default) -> not archived, true -> only archived, 'all' -> both.
+    // archived: 'all' (default) -> both, false -> not archived, true -> only archived.
     // q: case-insensitive substring of senderName or title; blank is a no-op.
-    list({ unreadOnly = false, archived: arch = false, q = '' } = {}) {
+    list({ unreadOnly = false, archived: arch = 'all', q = '' } = {}) {
       const needle = String(q).trim().toLowerCase();
       return messages
         .filter((m) => !unreadOnly || m.unread)
-        .filter((m) => arch === 'all' || archived.has(m.id) === (arch === true))
+        .filter((m) => (arch !== true && arch !== false) || archived.has(m.id) === arch)
         .filter((m) => !needle || m.senderName.toLowerCase().includes(needle) || m.title.toLowerCase().includes(needle))
         .map((m) => ({ ...m }));
     },

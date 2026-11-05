@@ -112,7 +112,7 @@ test('inbox assets are served with correct content types', async () => {
   const js = await get('/inbox/inbox.js');
   assert.strictEqual(js.status, 200);
   assert.strictEqual(js.headers.get('content-type'), 'text/javascript; charset=utf-8');
-  assert.match(await js.text(), /fetch\('\/messages'\)/);
+  assert.match(await js.text(), /fetch\('\/messages[?']/);
 });
 
 test('unknown inbox paths return 404 JSON', async () => {
@@ -298,7 +298,7 @@ test('?q= searches sender and title case-insensitively; blank q is a no-op', asy
   });
 });
 
-test('archive hides from default, shows under archived=true/all; unarchive restores', async () => {
+test('archive: default still lists everything; archived=false hides, archived=true/all; unarchive restores', async () => {
   await withServer(async (base, ids) => {
     const all = await ids('/messages');
     const r = await fetch(`${base}/messages/m1/archive`, { method: 'POST' });
@@ -306,11 +306,13 @@ test('archive hides from default, shows under archived=true/all; unarchive resto
     const { message } = await r.json();
     assert.deepStrictEqual(Object.keys(message).sort(), FIVE);
     assert.strictEqual(message.id, 'm1');
-    assert.deepStrictEqual(await ids('/messages'), all.filter((i) => i !== 'm1'));
-    assert.ok(!(await ids('/messages?unread=true')).includes('m1'));
+    assert.deepStrictEqual(await ids('/messages'), all);
+    assert.deepStrictEqual(await ids('/messages?archived=false'), all.filter((i) => i !== 'm1'));
+    assert.ok(!(await ids('/messages?archived=false&unread=true')).includes('m1'));
+    assert.ok((await ids('/messages?unread=true')).includes('m1'));
     assert.deepStrictEqual(await ids('/messages?archived=true'), ['m1']);
     assert.deepStrictEqual(await ids('/messages?archived=all'), all);
-    for (const v of ['false', '1', 'x']) assert.deepStrictEqual(await ids('/messages?archived=' + v), all.filter((i) => i !== 'm1'), v);
+    for (const v of ['1', 'x']) assert.deepStrictEqual(await ids('/messages?archived=' + v), all, v);
     assert.deepStrictEqual(await ids('/messages?archived=true&q=ada'), ['m1']);
     assert.deepStrictEqual(await ids('/messages?archived=true&q=grace'), []);
     // idempotent, and still reachable by id
@@ -320,7 +322,7 @@ test('archive hides from default, shows under archived=true/all; unarchive resto
     assert.strictEqual(u.status, 200);
     assert.strictEqual((await u.json()).message.id, 'm1');
     assert.strictEqual((await fetch(`${base}/messages/m1/unarchive`, { method: 'POST' })).status, 200);
-    assert.deepStrictEqual(await ids('/messages'), all);
+    assert.deepStrictEqual(await ids('/messages?archived=false'), all);
     assert.deepStrictEqual(await ids('/messages?archived=true'), []);
   });
 });
@@ -345,7 +347,7 @@ test('archived messages keep the five-field shape in every list; read-all covers
     }
     const ra = await (await fetch(`${base}/messages/read-all`, { method: 'POST' })).json();
     assert.strictEqual(ra.updated, 2); // m1 (archived) and m3
-    assert.ok(!ra.messages.some((m) => m.id === 'm1'));
+    assert.deepStrictEqual(ra.messages.map((m) => m.id), ['m1', 'm2', 'm3', 'm4']); // read-all returns everything again
     const arch = (await (await fetch(`${base}/messages?archived=true`)).json()).messages;
     assert.strictEqual(arch[0].unread, false);
     assert.strictEqual((await fetch(`${base}/messages/m1`, { method: 'DELETE' })).status, 204);
@@ -357,7 +359,8 @@ test('store.list archived/q filters and setArchived', () => {
   const store = createStore();
   assert.strictEqual(store.setArchived('nope', true), null);
   assert.strictEqual(store.setArchived('m2', true).id, 'm2');
-  assert.deepStrictEqual(store.list().map((m) => m.id), ['m1', 'm3', 'm4']);
+  assert.strictEqual(store.list().length, 4);
+  assert.deepStrictEqual(store.list({ archived: false }).map((m) => m.id), ['m1', 'm3', 'm4']);
   assert.deepStrictEqual(store.list({ archived: true }).map((m) => m.id), ['m2']);
   assert.strictEqual(store.list({ archived: 'all' }).length, 4);
   assert.deepStrictEqual(store.list({ q: 'TURING' }).map((m) => m.id), ['m3']);
@@ -372,27 +375,29 @@ test('inbox page has the search box and view toggle, and keeps the default fetch
   assert.match(html, /id="view-inbox"/);
   assert.match(html, /id="view-archive"/);
   const js = await (await get('/inbox/inbox.js')).text();
-  assert.ok(js.includes("fetch('/messages')"));
+  assert.ok(js.includes("fetch('/messages?'"));
+  assert.ok(js.includes('archived=false') || require('./public/inbox/unread.js').listQuery('', false) === 'archived=false');
   assert.match(js, /No matches/);
 });
 
-test('listQuery is empty for the plain inbox and encodes search/archive', () => {
+test('listQuery: inbox view asks for archived=false, archive view for archived=true, search is encoded', () => {
   const { listQuery } = require('./public/inbox/unread.js');
-  assert.strictEqual(listQuery('', false), '');
-  assert.strictEqual(listQuery('   ', false), '');
-  assert.strictEqual(listQuery(undefined, undefined), '');
-  assert.strictEqual(listQuery(' a&b ', false), 'q=a%26b');
+  assert.strictEqual(listQuery('', false), 'archived=false');
+  assert.strictEqual(listQuery('   ', false), 'archived=false');
+  assert.strictEqual(listQuery(undefined, undefined), 'archived=false');
+  assert.strictEqual(listQuery(' a&b ', false), 'q=a%26b&archived=false');
   assert.strictEqual(listQuery('', true), 'archived=true');
   assert.strictEqual(listQuery('x', true), 'q=x&archived=true');
 });
 
 // ---- issue #47 review follow-ups ----
-test('archived=bogus and archived=false behave as the default', async () => {
+test('archived=bogus behaves as the default (everything); archived=false hides archived', async () => {
   await withServer(async (base, ids) => {
     await fetch(`${base}/messages/m1/archive`, { method: 'POST' });
     const def = await ids('/messages');
-    assert.ok(!def.includes('m1'));
-    for (const v of ['bogus', 'false', '']) assert.deepStrictEqual(await ids('/messages?archived=' + v), def, v);
+    assert.ok(def.includes('m1'));
+    for (const v of ['bogus', '', 'all', 'TRUE']) assert.deepStrictEqual(await ids('/messages?archived=' + v), def, v);
+    assert.ok(!(await ids('/messages?archived=false')).includes('m1'));
   });
 });
 
@@ -401,6 +406,7 @@ test('deleting an archived message removes it everywhere', async () => {
     await fetch(`${base}/messages/m1/archive`, { method: 'POST' });
     assert.strictEqual((await fetch(`${base}/messages/m1`, { method: 'DELETE' })).status, 204);
     assert.deepStrictEqual(await ids('/messages?archived=true'), []);
+    assert.ok(!(await ids('/messages')).includes('m1'));
     assert.ok(!(await ids('/messages?archived=all')).includes('m1'));
     assert.strictEqual((await fetch(`${base}/messages/m1`)).status, 404);
   });
@@ -412,7 +418,8 @@ test('q combined with archived=true and archived=all', async () => {
     await fetch(`${base}/messages/m3/archive`, { method: 'POST' });
     assert.deepStrictEqual(await ids('/messages?archived=true&q=turing'), ['m3']);
     assert.deepStrictEqual(await ids('/messages?archived=true&q=grace'), []);
-    assert.deepStrictEqual(await ids('/messages?q=turing'), []);
+    assert.deepStrictEqual(await ids('/messages?q=turing'), ['m3']);
+    assert.deepStrictEqual(await ids('/messages?archived=false&q=turing'), []);
     assert.deepStrictEqual(await ids('/messages?archived=all&q=a'), ['m1', 'm2', 'm3', 'm4']);
     assert.deepStrictEqual(await ids('/messages?archived=true&q=ada&unread=true'), ['m1']);
   });
