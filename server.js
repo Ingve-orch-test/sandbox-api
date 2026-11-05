@@ -53,9 +53,13 @@ function createServer({ store = createStore() } = {}) {
     const path = q === -1 ? target : target.slice(0, q);
     const query = q === -1 ? '' : target.slice(q + 1);
     if (req.method === 'GET' && path === '/messages') {
-      const unreadOnly = new URLSearchParams(query).get('unread') === 'true';
+      const params = new URLSearchParams(query);
+      const unreadOnly = params.get('unread') === 'true';
+      const a = params.get('archived');
+      const archived = a === 'true' ? true : a === 'false' ? false : 'all'; // anything else: everything
+      const search = params.get('q') || '';
       res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ messages: store.list({ unreadOnly }) }));
+      res.end(JSON.stringify({ messages: store.list({ unreadOnly, archived, q: search }) }));
       return;
     }
     // POST /messages/read-all -> 200 { updated: <number newly marked read>, messages: [...] }
@@ -65,10 +69,22 @@ function createServer({ store = createStore() } = {}) {
       res.end(JSON.stringify({ updated, messages: store.list() }));
       return;
     }
+    // POST /messages/<id>/archive|unarchive -> 200 { message }, 404 if unknown (idempotent)
+    const act = req.method === 'POST' && /^\/messages\/([^/]+)\/(archive|unarchive)$/.exec(path);
+    if (act) {
+      const message = store.setArchived(act[1], act[2] === 'archive');
+      if (!message) {
+        notFound(res);
+        return;
+      }
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ message }));
+      return;
+    }
     // GET /messages/<id> -> 200 { message }, 404 if unknown
     if (req.method === 'GET' && path.startsWith('/messages/') && path !== '/messages/read-all') {
       const id = path.slice('/messages/'.length);
-      const message = store.list().find((m) => m.id === id);
+      const message = store.list({ archived: 'all' }).find((m) => m.id === id);
       if (!message) {
         notFound(res);
         return;

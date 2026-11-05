@@ -3,6 +3,13 @@
   var status = document.getElementById('status');
   var countEl = document.getElementById('unread-count');
   var markAllBtn = document.getElementById('mark-all-read');
+  var searchEl = document.getElementById('search');
+  var inboxBtn = document.getElementById('view-inbox');
+  var archiveBtn = document.getElementById('view-archive');
+  var archivedView = false;
+  var searchTerm = '';
+  var requestId = 0;
+  var debounce = null;
   var current = []; // messages currently shown, kept in sync with the DOM
   var errorEl = document.createElement('div');
   errorEl.className = 'inline-error';
@@ -50,10 +57,20 @@
     text.appendChild(element('div', 'sender', message.senderName));
     text.appendChild(element('div', 'title', message.title));
     li.appendChild(text);
+    var arch = element('button', 'delete-btn', archivedView ? 'Unarchive' : 'Archive');
+    arch.type = 'button';
+    arch.setAttribute('aria-label', archivedView ? 'Unarchive message' : 'Archive message');
+    arch.addEventListener('click', function () {
+      send('/messages/' + encodeURIComponent(message.id) + (archivedView ? '/unarchive' : '/archive'),
+        'POST', message.id, li, arch, 'Could not ' + (archivedView ? 'unarchive' : 'archive') + ' message.');
+    });
+    li.appendChild(arch);
     var del = element('button', 'delete-btn', 'Delete');
     del.type = 'button';
     del.setAttribute('aria-label', 'Delete message');
-    del.addEventListener('click', function () { deleteMessage(message.id, li, del); });
+    del.addEventListener('click', function () {
+      send('/messages/' + encodeURIComponent(message.id), 'DELETE', message.id, li, del, 'Could not delete message.');
+    });
     li.appendChild(del);
     return li;
   }
@@ -85,20 +102,28 @@
     markAllBtn.disabled = window.InboxUnread.markAllReadState(current).disabled;
   }
 
-  function deleteMessage(id, li, btn) {
+  function emptyText() {
+    if (searchTerm.trim()) return 'No matches';
+    return archivedView ? 'No archived messages' : 'No messages';
+  }
+
+  // Delete / archive / unarchive: on success the row leaves the current view.
+  function send(url, method, id, li, btn, failText) {
     btn.disabled = true;
     errorEl.hidden = true;
-    fetch('/messages/' + encodeURIComponent(id), { method: 'DELETE' })
+    var startedAt = requestId; // view/search changes bump requestId
+    fetch(url, { method: method })
       .then(function (res) {
         if (!res.ok) throw new Error('HTTP ' + res.status);
+        if (startedAt !== requestId) return; // the list was reloaded meanwhile; don't touch the new one
         current = window.InboxUnread.removeMessage(current, id);
         if (li.parentNode) li.parentNode.removeChild(li);
-        if (current.length === 0) showStatus('No messages', false);
+        if (current.length === 0) showStatus(emptyText(), false);
         else updateSummary();
       })
       .catch(function () {
         btn.disabled = false;
-        errorEl.textContent = 'Could not delete message.';
+        errorEl.textContent = failText;
         errorEl.hidden = false;
       });
   }
@@ -107,7 +132,7 @@
     current = messages.slice();
     errorEl.hidden = true;
     if (messages.length === 0) {
-      showStatus('No messages', false);
+      showStatus(emptyText(), false);
       return;
     }
     status.hidden = true;
@@ -131,17 +156,39 @@
 
   function load() {
     showStatus('Loading…', false);
-    fetch('/messages')
+    var mine = ++requestId;
+    var qs = window.InboxUnread.listQuery(searchTerm, archivedView);
+    fetch('/messages?' + qs)
       .then(function (res) {
         if (!res.ok) throw new Error('HTTP ' + res.status);
         return res.json();
       })
       .then(function (body) {
+        if (mine !== requestId) return; // a newer search/view superseded this one
         if (!body || !Array.isArray(body.messages)) throw new Error('bad response');
         render(body.messages);
       })
-      .catch(function () { showStatus('Could not load messages.', true); });
+      .catch(function () { if (mine === requestId) showStatus('Could not load messages.', true); });
   }
 
-  load();
+  function setView(archived) {
+    archivedView = archived;
+    inboxBtn.className = 'view-btn' + (archived ? '' : ' active');
+    archiveBtn.className = 'view-btn' + (archived ? ' active' : '');
+    inboxBtn.setAttribute('aria-pressed', String(!archived));
+    archiveBtn.setAttribute('aria-pressed', String(archived));
+    load();
+  }
+  inboxBtn.addEventListener('click', function () { setView(false); });
+  archiveBtn.addEventListener('click', function () { setView(true); });
+  searchEl.addEventListener('input', function () {
+    clearTimeout(debounce);
+    debounce = setTimeout(function () { searchTerm = searchEl.value; load(); }, 250);
+  });
+
+  // Deep links: /inbox?q=ada&view=archive
+  var initial = new URLSearchParams(location.search);
+  searchTerm = initial.get('q') || '';
+  searchEl.value = searchTerm;
+  setView(initial.get('view') === 'archive');
 })();

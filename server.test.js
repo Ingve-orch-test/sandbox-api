@@ -112,7 +112,7 @@ test('inbox assets are served with correct content types', async () => {
   const js = await get('/inbox/inbox.js');
   assert.strictEqual(js.status, 200);
   assert.strictEqual(js.headers.get('content-type'), 'text/javascript; charset=utf-8');
-  assert.match(await js.text(), /fetch\('\/messages'\)/);
+  assert.match(await js.text(), /fetch\('\/messages[?']/);
 });
 
 test('unknown inbox paths return 404 JSON', async () => {
@@ -271,4 +271,169 @@ test('removeMessage drops only the deleted id and does not mutate', () => {
   const last = removeMessage([{ id: 'a', unread: true }, { id: 'b', unread: false }], 'a');
   assert.strictEqual(badgeState(last).hidden, true);
   assert.strictEqual(markAllReadState(last).disabled, true);
+});
+
+// ---- issue #47: search + archive ----
+const FIVE = ['id', 'senderImage', 'senderName', 'title', 'unread'];
+async function withServer(fn, opts = { store: createStore() }) {
+  const server = createServer(opts);
+  await new Promise((resolve) => server.listen(0, resolve));
+  const base = `http://localhost:${server.address().port}`;
+  const ids = async (p) => (await (await fetch(base + p)).json()).messages.map((m) => m.id);
+  try { await fn(base, ids); } finally { server.close(); }
+}
+
+test('?q= searches sender and title case-insensitively; blank q is a no-op', async () => {
+  await withServer(async (base, ids) => {
+    const all = await ids('/messages');
+    assert.deepStrictEqual(await ids('/messages?q=ADA'), ['m1']);
+    assert.deepStrictEqual(await ids('/messages?q=moth'), ['m2']);
+    assert.deepStrictEqual(await ids('/messages?q=zzzz'), []);
+    assert.deepStrictEqual(await ids('/messages?q='), all);
+    assert.deepStrictEqual(await ids('/messages?q=%20%20'), all);
+    assert.deepStrictEqual(await ids('/messages?q=re%3A'), ['m3']);
+    // ANDs with unread=true: m2 matches "moth" but is read
+    assert.deepStrictEqual(await ids('/messages?q=moth&unread=true'), []);
+    assert.deepStrictEqual(await ids('/messages?q=ada&unread=true'), ['m1']);
+  });
+});
+
+test('archive: default still lists everything; archived=false hides, archived=true/all; unarchive restores', async () => {
+  await withServer(async (base, ids) => {
+    const all = await ids('/messages');
+    const r = await fetch(`${base}/messages/m1/archive`, { method: 'POST' });
+    assert.strictEqual(r.status, 200);
+    const { message } = await r.json();
+    assert.deepStrictEqual(Object.keys(message).sort(), FIVE);
+    assert.strictEqual(message.id, 'm1');
+    assert.deepStrictEqual(await ids('/messages'), all);
+    assert.deepStrictEqual(await ids('/messages?archived=false'), all.filter((i) => i !== 'm1'));
+    assert.ok(!(await ids('/messages?archived=false&unread=true')).includes('m1'));
+    assert.ok((await ids('/messages?unread=true')).includes('m1'));
+    assert.deepStrictEqual(await ids('/messages?archived=true'), ['m1']);
+    assert.deepStrictEqual(await ids('/messages?archived=all'), all);
+    for (const v of ['1', 'x']) assert.deepStrictEqual(await ids('/messages?archived=' + v), all, v);
+    assert.deepStrictEqual(await ids('/messages?archived=true&q=ada'), ['m1']);
+    assert.deepStrictEqual(await ids('/messages?archived=true&q=grace'), []);
+    // idempotent, and still reachable by id
+    assert.strictEqual((await fetch(`${base}/messages/m1/archive`, { method: 'POST' })).status, 200);
+    assert.strictEqual((await (await fetch(`${base}/messages/m1`)).json()).message.id, 'm1');
+    const u = await fetch(`${base}/messages/m1/unarchive`, { method: 'POST' });
+    assert.strictEqual(u.status, 200);
+    assert.strictEqual((await u.json()).message.id, 'm1');
+    assert.strictEqual((await fetch(`${base}/messages/m1/unarchive`, { method: 'POST' })).status, 200);
+    assert.deepStrictEqual(await ids('/messages?archived=false'), all);
+    assert.deepStrictEqual(await ids('/messages?archived=true'), []);
+  });
+});
+
+test('archive endpoints: unknown id and wrong methods are 404 JSON', async () => {
+  await withServer(async (base) => {
+    for (const [method, p] of [['POST', '/messages/nope/archive'], ['POST', '/messages/nope/unarchive'],
+      ['GET', '/messages/m1/archive'], ['DELETE', '/messages/m1/archive'], ['PUT', '/messages/m1/unarchive'],
+      ['POST', '/messages/m1/archive/x'], ['POST', '/messages//archive']]) {
+      const res = await fetch(base + p, { method });
+      assert.strictEqual(res.status, 404, `${method} ${p}`);
+      assert.deepStrictEqual(await res.json(), { error: 'not found' });
+    }
+  });
+});
+
+test('archived messages keep the five-field shape in every list; read-all covers them', async () => {
+  await withServer(async (base) => {
+    await fetch(`${base}/messages/m1/archive`, { method: 'POST' });
+    for (const p of ['/messages', '/messages?archived=true', '/messages?archived=all']) {
+      for (const m of (await (await fetch(base + p)).json()).messages) assert.deepStrictEqual(Object.keys(m).sort(), FIVE, p);
+    }
+    const ra = await (await fetch(`${base}/messages/read-all`, { method: 'POST' })).json();
+    assert.strictEqual(ra.updated, 2); // m1 (archived) and m3
+    assert.deepStrictEqual(ra.messages.map((m) => m.id), ['m1', 'm2', 'm3', 'm4']); // read-all returns everything again
+    const arch = (await (await fetch(`${base}/messages?archived=true`)).json()).messages;
+    assert.strictEqual(arch[0].unread, false);
+    assert.strictEqual((await fetch(`${base}/messages/m1`, { method: 'DELETE' })).status, 204);
+    assert.deepStrictEqual((await (await fetch(`${base}/messages?archived=all`)).json()).messages.map((m) => m.id), ['m2', 'm3', 'm4']);
+  });
+});
+
+test('store.list archived/q filters and setArchived', () => {
+  const store = createStore();
+  assert.strictEqual(store.setArchived('nope', true), null);
+  assert.strictEqual(store.setArchived('m2', true).id, 'm2');
+  assert.strictEqual(store.list().length, 4);
+  assert.deepStrictEqual(store.list({ archived: false }).map((m) => m.id), ['m1', 'm3', 'm4']);
+  assert.deepStrictEqual(store.list({ archived: true }).map((m) => m.id), ['m2']);
+  assert.strictEqual(store.list({ archived: 'all' }).length, 4);
+  assert.deepStrictEqual(store.list({ q: 'TURING' }).map((m) => m.id), ['m3']);
+  assert.ok(store.list({ archived: 'all' }).every((m) => !('archived' in m)));
+  store.setArchived('m2', false);
+  assert.strictEqual(store.list().length, 4);
+});
+
+test('inbox page has the search box and view toggle, and keeps the default fetch', async () => {
+  const html = await (await get('/inbox')).text();
+  assert.match(html, /id="search"/);
+  assert.match(html, /id="view-inbox"/);
+  assert.match(html, /id="view-archive"/);
+  const js = await (await get('/inbox/inbox.js')).text();
+  assert.ok(js.includes("fetch('/messages?'"));
+  assert.ok(js.includes('archived=false') || require('./public/inbox/unread.js').listQuery('', false) === 'archived=false');
+  assert.match(js, /No matches/);
+});
+
+test('listQuery: inbox view asks for archived=false, archive view for archived=true, search is encoded', () => {
+  const { listQuery } = require('./public/inbox/unread.js');
+  assert.strictEqual(listQuery('', false), 'archived=false');
+  assert.strictEqual(listQuery('   ', false), 'archived=false');
+  assert.strictEqual(listQuery(undefined, undefined), 'archived=false');
+  assert.strictEqual(listQuery(' a&b ', false), 'q=a%26b&archived=false');
+  assert.strictEqual(listQuery('', true), 'archived=true');
+  assert.strictEqual(listQuery('x', true), 'q=x&archived=true');
+});
+
+// ---- issue #47 review follow-ups ----
+test('archived=bogus behaves as the default (everything); archived=false hides archived', async () => {
+  await withServer(async (base, ids) => {
+    await fetch(`${base}/messages/m1/archive`, { method: 'POST' });
+    const def = await ids('/messages');
+    assert.ok(def.includes('m1'));
+    for (const v of ['bogus', '', 'all', 'TRUE']) assert.deepStrictEqual(await ids('/messages?archived=' + v), def, v);
+    assert.ok(!(await ids('/messages?archived=false')).includes('m1'));
+  });
+});
+
+test('deleting an archived message removes it everywhere', async () => {
+  await withServer(async (base, ids) => {
+    await fetch(`${base}/messages/m1/archive`, { method: 'POST' });
+    assert.strictEqual((await fetch(`${base}/messages/m1`, { method: 'DELETE' })).status, 204);
+    assert.deepStrictEqual(await ids('/messages?archived=true'), []);
+    assert.ok(!(await ids('/messages')).includes('m1'));
+    assert.ok(!(await ids('/messages?archived=all')).includes('m1'));
+    assert.strictEqual((await fetch(`${base}/messages/m1`)).status, 404);
+  });
+});
+
+test('q combined with archived=true and archived=all', async () => {
+  await withServer(async (base, ids) => {
+    await fetch(`${base}/messages/m1/archive`, { method: 'POST' });
+    await fetch(`${base}/messages/m3/archive`, { method: 'POST' });
+    assert.deepStrictEqual(await ids('/messages?archived=true&q=turing'), ['m3']);
+    assert.deepStrictEqual(await ids('/messages?archived=true&q=grace'), []);
+    assert.deepStrictEqual(await ids('/messages?q=turing'), ['m3']);
+    assert.deepStrictEqual(await ids('/messages?archived=false&q=turing'), []);
+    assert.deepStrictEqual(await ids('/messages?archived=all&q=a'), ['m1', 'm2', 'm3', 'm4']);
+    assert.deepStrictEqual(await ids('/messages?archived=true&q=ada&unread=true'), ['m1']);
+  });
+});
+
+test('q with URL-special characters (&, %, +) matches end to end', async () => {
+  const mk = (id, title) => ({ id, senderName: 'S', senderImage: 'https://x.test/a.png', title, unread: false });
+  const store = createStore([mk('a', 'R&D 100% plan'), mk('b', 'a+b=c'), mk('c', 'plain title')]);
+  await withServer(async (base, ids) => {
+    assert.deepStrictEqual(await ids('/messages?q=' + encodeURIComponent('R&D')), ['a']);
+    assert.deepStrictEqual(await ids('/messages?q=' + encodeURIComponent('100%')), ['a']);
+    assert.deepStrictEqual(await ids('/messages?q=' + encodeURIComponent('a+b')), ['b']);
+    // a raw "+" in a query string decodes to a space, so it matches nothing here
+    assert.deepStrictEqual(await ids('/messages?q=a+b'), []);
+    assert.deepStrictEqual(await ids('/messages?q=' + encodeURIComponent('50%')), []);
+  }, { store });
 });
