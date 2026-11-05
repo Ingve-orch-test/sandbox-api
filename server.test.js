@@ -385,3 +385,48 @@ test('listQuery is empty for the plain inbox and encodes search/archive', () => 
   assert.strictEqual(listQuery('', true), 'archived=true');
   assert.strictEqual(listQuery('x', true), 'q=x&archived=true');
 });
+
+// ---- issue #47 review follow-ups ----
+test('archived=bogus and archived=false behave as the default', async () => {
+  await withServer(async (base, ids) => {
+    await fetch(`${base}/messages/m1/archive`, { method: 'POST' });
+    const def = await ids('/messages');
+    assert.ok(!def.includes('m1'));
+    for (const v of ['bogus', 'false', '']) assert.deepStrictEqual(await ids('/messages?archived=' + v), def, v);
+  });
+});
+
+test('deleting an archived message removes it everywhere', async () => {
+  await withServer(async (base, ids) => {
+    await fetch(`${base}/messages/m1/archive`, { method: 'POST' });
+    assert.strictEqual((await fetch(`${base}/messages/m1`, { method: 'DELETE' })).status, 204);
+    assert.deepStrictEqual(await ids('/messages?archived=true'), []);
+    assert.ok(!(await ids('/messages?archived=all')).includes('m1'));
+    assert.strictEqual((await fetch(`${base}/messages/m1`)).status, 404);
+  });
+});
+
+test('q combined with archived=true and archived=all', async () => {
+  await withServer(async (base, ids) => {
+    await fetch(`${base}/messages/m1/archive`, { method: 'POST' });
+    await fetch(`${base}/messages/m3/archive`, { method: 'POST' });
+    assert.deepStrictEqual(await ids('/messages?archived=true&q=turing'), ['m3']);
+    assert.deepStrictEqual(await ids('/messages?archived=true&q=grace'), []);
+    assert.deepStrictEqual(await ids('/messages?q=turing'), []);
+    assert.deepStrictEqual(await ids('/messages?archived=all&q=a'), ['m1', 'm2', 'm3', 'm4']);
+    assert.deepStrictEqual(await ids('/messages?archived=true&q=ada&unread=true'), ['m1']);
+  });
+});
+
+test('q with URL-special characters (&, %, +) matches end to end', async () => {
+  const mk = (id, title) => ({ id, senderName: 'S', senderImage: 'https://x.test/a.png', title, unread: false });
+  const store = createStore([mk('a', 'R&D 100% plan'), mk('b', 'a+b=c'), mk('c', 'plain title')]);
+  await withServer(async (base, ids) => {
+    assert.deepStrictEqual(await ids('/messages?q=' + encodeURIComponent('R&D')), ['a']);
+    assert.deepStrictEqual(await ids('/messages?q=' + encodeURIComponent('100%')), ['a']);
+    assert.deepStrictEqual(await ids('/messages?q=' + encodeURIComponent('a+b')), ['b']);
+    // a raw "+" in a query string decodes to a space, so it matches nothing here
+    assert.deepStrictEqual(await ids('/messages?q=a+b'), []);
+    assert.deepStrictEqual(await ids('/messages?q=' + encodeURIComponent('50%')), []);
+  }, { store });
+});

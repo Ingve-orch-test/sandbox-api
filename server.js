@@ -57,9 +57,9 @@ function createServer({ store = createStore() } = {}) {
       const unreadOnly = params.get('unread') === 'true';
       const a = params.get('archived');
       const archived = a === 'true' ? true : a === 'all' ? 'all' : false;
-      const q = params.get('q') || '';
+      const search = params.get('q') || '';
       res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ messages: store.list({ unreadOnly, archived, q }) }));
+      res.end(JSON.stringify({ messages: store.list({ unreadOnly, archived, q: search }) }));
       return;
     }
     // POST /messages/read-all -> 200 { updated: <number newly marked read>, messages: [...] }

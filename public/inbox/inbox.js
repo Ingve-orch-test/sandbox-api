@@ -111,9 +111,11 @@
   function send(url, method, id, li, btn, failText) {
     btn.disabled = true;
     errorEl.hidden = true;
+    var startedAt = requestId; // view/search changes bump requestId
     fetch(url, { method: method })
       .then(function (res) {
         if (!res.ok) throw new Error('HTTP ' + res.status);
+        if (startedAt !== requestId) return; // the list was reloaded meanwhile; don't touch the new one
         current = window.InboxUnread.removeMessage(current, id);
         if (li.parentNode) li.parentNode.removeChild(li);
         if (current.length === 0) showStatus(emptyText(), false);
