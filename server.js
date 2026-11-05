@@ -2,6 +2,7 @@ const http = require('node:http');
 const fs = require('node:fs');
 const nodePath = require('node:path');
 const { createStore } = require('./store');
+const { version } = require('./package.json');
 
 const PUBLIC_DIR = nodePath.join(__dirname, 'public', 'inbox');
 const TYPES = {
@@ -52,6 +53,12 @@ function createServer({ store = createStore() } = {}) {
     const q = target.indexOf('?');
     const path = q === -1 ? target : target.slice(0, q);
     const query = q === -1 ? '' : target.slice(q + 1);
+    // GET /health -> 200 { ok: true, version }; no auth
+    if (req.method === 'GET' && path === '/health') {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: true, version }));
+      return;
+    }
     if (req.method === 'GET' && path === '/messages') {
       const params = new URLSearchParams(query);
       const unreadOnly = params.get('unread') === 'true';
