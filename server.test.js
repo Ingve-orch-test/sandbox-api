@@ -437,3 +437,22 @@ test('q with URL-special characters (&, %, +) matches end to end', async () => {
     assert.deepStrictEqual(await ids('/messages?q=' + encodeURIComponent('50%')), []);
   }, { store });
 });
+
+test('GET /health returns ok and the package version', async () => {
+  const res = await get('/health');
+  assert.strictEqual(res.status, 200);
+  assert.match(res.headers.get('content-type'), /^application\/json/);
+  assert.deepStrictEqual(await res.json(), { ok: true, version: require('./package.json').version });
+});
+
+test('non-GET /health is a 404 like other unknown routes', async () => {
+  const server = createServer();
+  await new Promise((resolve) => server.listen(0, resolve));
+  try {
+    const res = await fetch(`http://localhost:${server.address().port}/health`, { method: 'POST' });
+    assert.strictEqual(res.status, 404);
+    assert.match(res.headers.get('content-type'), /^application\/json/);
+  } finally {
+    server.close();
+  }
+});
